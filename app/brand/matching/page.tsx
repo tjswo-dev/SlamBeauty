@@ -1,44 +1,81 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { dummyInfluencers } from "@/lib/dummy-data";
+import { useState, useMemo, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { InfluencerDetailSheet } from "@/components/brand/influencer-detail-sheet";
+import { InfluencerDetailSheet, type SheetInfluencer } from "@/components/brand/influencer-detail-sheet";
 import {
-  Star,
-  MapPin,
   Users,
-  TrendingUp,
   Check,
   CalendarDays,
   Clock,
   Filter,
   Search,
   SlidersHorizontal,
-  ChevronDown,
-  Shield,
+  MapPin,
+  Loader2,
 } from "lucide-react";
+
+type InfluencerRow = {
+  user_id: string;
+  name: string;
+  avatar_url: string | null;
+  bio: string | null;
+  instagram_handle: string | null;
+  tiktok_handle: string | null;
+  twitter_handle: string | null;
+  instagram_followers: number | null;
+  tiktok_followers: number | null;
+  twitter_followers: number | null;
+  primary_platform: string | null;
+  categories: string[];
+};
 
 function formatNumber(n: number) {
   if (n >= 10000) return `${(n / 10000).toFixed(1)}만`;
   return n.toLocaleString();
 }
 
-function formatCurrency(n: number) {
-  return `${(n / 10000).toFixed(0)}만원`;
+function getPrimaryHandle(row: InfluencerRow): string {
+  if (row.primary_platform === "Instagram" && row.instagram_handle) return `@${row.instagram_handle}`;
+  if (row.primary_platform === "TikTok" && row.tiktok_handle) return `@${row.tiktok_handle}`;
+  if (row.primary_platform === "Twitter" && row.twitter_handle) return `@${row.twitter_handle}`;
+  if (row.instagram_handle) return `@${row.instagram_handle}`;
+  if (row.tiktok_handle) return `@${row.tiktok_handle}`;
+  if (row.twitter_handle) return `@${row.twitter_handle}`;
+  return "";
+}
+
+function getActivePlatforms(row: InfluencerRow): string[] {
+  const platforms: string[] = [];
+  if (row.instagram_handle) platforms.push("Instagram");
+  if (row.tiktok_handle) platforms.push("TikTok");
+  if (row.twitter_handle) platforms.push("Twitter");
+  return platforms;
+}
+
+function getTotalFollowers(row: InfluencerRow): number {
+  return (row.instagram_followers ?? 0) + (row.tiktok_followers ?? 0) + (row.twitter_followers ?? 0);
+}
+
+function mapToSheet(row: InfluencerRow): SheetInfluencer {
+  return {
+    id: row.user_id,
+    name: row.name,
+    handle: getPrimaryHandle(row),
+    avatar: row.avatar_url ?? "",
+    bio: row.bio ?? "",
+    followers: getTotalFollowers(row),
+    platforms: getActivePlatforms(row),
+    categories: row.categories ?? [],
+  };
 }
 
 const categoryOptions = ["전체", "뷰티", "K-뷰티", "스킨케어", "메이크업", "패션", "라이프스타일", "웰니스"];
-const platformOptions = ["전체", "Instagram", "YouTube", "TikTok"];
-const sortOptions = [
-  { value: "engagement", label: "참여율 높은 순" },
-  { value: "followers", label: "팔로워 많은 순" },
-  { value: "rate_low", label: "단가 낮은 순" },
-  { value: "rating", label: "평점 높은 순" },
-];
+const platformOptions = ["전체", "Instagram", "TikTok", "Twitter"];
 
 const nextMonday = (() => {
   const d = new Date("2026-06-02");
@@ -51,14 +88,30 @@ const nextMonday = (() => {
 export default function MatchingPage() {
   const [activeTab, setActiveTab] = useState<"track1" | "track2">("track1");
   const [requestedIds, setRequestedIds] = useState<string[]>([]);
-  const [selectedInf, setSelectedInf] = useState<typeof dummyInfluencers[0] | null>(null);
+  const [selectedInf, setSelectedInf] = useState<SheetInfluencer | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("전체");
   const [selectedPlatform, setSelectedPlatform] = useState("전체");
-  const [sortBy, setSortBy] = useState("engagement");
+  const [sortBy, setSortBy] = useState("followers");
   const [minFollowers, setMinFollowers] = useState("");
-  const [maxBudget, setMaxBudget] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [influencers, setInfluencers] = useState<InfluencerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInfluencers = async () => {
+      setLoading(true);
+      const supabase = createClient();
+      const { data, error } = await (supabase.from("influencer_profiles") as ReturnType<typeof supabase.from>).select(
+        "user_id, name, avatar_url, bio, instagram_handle, tiktok_handle, twitter_handle, instagram_followers, tiktok_followers, twitter_followers, primary_platform, categories"
+      );
+      if (!error && data) {
+        setInfluencers(data as InfluencerRow[]);
+      }
+      setLoading(false);
+    };
+    fetchInfluencers();
+  }, []);
 
   const handleRequest = (id: string) => {
     setRequestedIds((prev) => [...prev, id]);
@@ -66,40 +119,31 @@ export default function MatchingPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = [...dummyInfluencers];
+    let list = [...influencers];
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (inf) =>
           inf.name.toLowerCase().includes(q) ||
-          inf.handle.toLowerCase().includes(q) ||
-          inf.categories.some((c) => c.toLowerCase().includes(q))
+          getPrimaryHandle(inf).toLowerCase().includes(q) ||
+          (inf.categories ?? []).some((c) => c.toLowerCase().includes(q))
       );
     }
     if (selectedCategory !== "전체") {
-      list = list.filter((inf) => inf.categories.includes(selectedCategory));
+      list = list.filter((inf) => (inf.categories ?? []).includes(selectedCategory));
     }
     if (selectedPlatform !== "전체") {
-      list = list.filter((inf) => inf.platforms.includes(selectedPlatform));
+      list = list.filter((inf) => getActivePlatforms(inf).includes(selectedPlatform));
     }
     if (minFollowers) {
-      list = list.filter((inf) => inf.followers >= Number(minFollowers));
-    }
-    if (maxBudget) {
-      list = list.filter((inf) => inf.exclusiveRate <= Number(maxBudget) * 10000);
+      list = list.filter((inf) => getTotalFollowers(inf) >= Number(minFollowers));
     }
 
-    list.sort((a, b) => {
-      if (sortBy === "engagement") return b.engagementRate - a.engagementRate;
-      if (sortBy === "followers") return b.followers - a.followers;
-      if (sortBy === "rate_low") return a.exclusiveRate - b.exclusiveRate;
-      if (sortBy === "rating") return b.rating - a.rating;
-      return 0;
-    });
+    list.sort((a, b) => getTotalFollowers(b) - getTotalFollowers(a));
 
     return list;
-  }, [searchQuery, selectedCategory, selectedPlatform, sortBy, minFollowers, maxBudget]);
+  }, [influencers, searchQuery, selectedCategory, selectedPlatform, sortBy, minFollowers]);
 
   return (
     <div className="p-8">
@@ -203,9 +247,7 @@ export default function MatchingPage() {
               onChange={(e) => setSortBy(e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              {sortOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              <option value="followers">팔로워 많은 순</option>
             </select>
           </div>
 
@@ -220,16 +262,6 @@ export default function MatchingPage() {
                   value={minFollowers}
                   onChange={(e) => setMinFollowers(e.target.value)}
                   className="w-28 text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-slate-500 whitespace-nowrap">최대 예산 (만원)</label>
-                <Input
-                  type="number"
-                  placeholder="80"
-                  value={maxBudget}
-                  onChange={(e) => setMaxBudget(e.target.value)}
-                  className="w-24 text-sm"
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -256,7 +288,6 @@ export default function MatchingPage() {
                   setSelectedCategory("전체");
                   setSelectedPlatform("전체");
                   setMinFollowers("");
-                  setMaxBudget("");
                 }}
                 className="text-xs text-slate-400 hover:text-slate-600 ml-auto"
               >
@@ -267,117 +298,107 @@ export default function MatchingPage() {
 
           <div className="text-xs text-slate-400 mb-3">{filtered.length}명 표시 중</div>
 
+          {/* Loading state */}
+          {loading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+              <span className="ml-2 text-sm text-slate-400">인플루언서 불러오는 중...</span>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loading && influencers.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <Users className="w-10 h-10 mb-3 text-slate-300" />
+              <div className="text-sm">등록된 인플루언서가 없습니다</div>
+            </div>
+          )}
+
           {/* Influencer list */}
-          <div className="space-y-3">
-            {filtered.map((inf, idx) => {
-              const discount = Math.round((1 - inf.exclusiveRate / inf.regularRate) * 100);
-              const isRequested = requestedIds.includes(inf.id);
+          {!loading && (
+            <div className="space-y-3">
+              {filtered.map((inf, idx) => {
+                const sheetInf = mapToSheet(inf);
+                const isRequested = requestedIds.includes(inf.user_id);
+                const handle = getPrimaryHandle(inf);
+                const platforms = getActivePlatforms(inf);
+                const totalFollowers = getTotalFollowers(inf);
 
-              return (
-                <div
-                  key={inf.id}
-                  className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex items-center gap-4 hover:border-indigo-200 hover:shadow-sm transition-all group"
-                >
-                  <div className="text-sm font-bold text-slate-300 w-6 text-center shrink-0">
-                    {idx + 1}
-                  </div>
+                return (
+                  <div
+                    key={inf.user_id}
+                    className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex items-center gap-4 hover:border-indigo-200 hover:shadow-sm transition-all group"
+                  >
+                    <div className="text-sm font-bold text-slate-300 w-6 text-center shrink-0">
+                      {idx + 1}
+                    </div>
 
-                  <button onClick={() => setSelectedInf(inf)}>
-                    <Avatar size="lg" className="hover:ring-2 hover:ring-indigo-300 transition-all">
-                      <AvatarFallback>{inf.name[0]}</AvatarFallback>
-                    </Avatar>
-                  </button>
+                    <button onClick={() => setSelectedInf(sheetInf)}>
+                      <Avatar size="lg" className="hover:ring-2 hover:ring-indigo-300 transition-all">
+                        <AvatarImage src={inf.avatar_url ?? ""} alt={inf.name} />
+                        <AvatarFallback>{inf.name[0]}</AvatarFallback>
+                      </Avatar>
+                    </button>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <button
-                        onClick={() => setSelectedInf(inf)}
-                        className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors"
-                      >
-                        {inf.name}
-                      </button>
-                      <span className="text-sm text-slate-400">{inf.handle}</span>
-                      <div className="flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                        <span className="text-xs font-semibold text-slate-600">{inf.rating}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <button
+                          onClick={() => setSelectedInf(sheetInf)}
+                          className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors"
+                        >
+                          {inf.name}
+                        </button>
+                        {handle && <span className="text-sm text-slate-400">{handle}</span>}
                       </div>
-                      {inf.secondaryConsent && (
-                        <Badge className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5">
-                          2차 활용 동의
-                        </Badge>
+                      <div className="flex items-center gap-4 text-sm text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" />
+                          {formatNumber(totalFollowers)}
+                        </span>
+                        <div className="flex gap-1">
+                          {platforms.map((p) => (
+                            <span key={p} className="text-xs bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          {(inf.categories ?? []).slice(0, 2).map((cat) => (
+                            <Badge key={cat} variant="secondary" className="text-xs">
+                              {cat}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CTA */}
+                    <div className="shrink-0 flex gap-2">
+                      <button
+                        onClick={() => setSelectedInf(sheetInf)}
+                        className="px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        상세 보기
+                      </button>
+                      {isRequested ? (
+                        <div className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+                          <Check className="w-3.5 h-3.5" />
+                          요청됨
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleRequest(inf.user_id)}
+                          className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          협업 요청
+                        </button>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {inf.countryLabel}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" />
-                        {formatNumber(inf.followers)}
-                      </span>
-                      <span className="flex items-center gap-1 text-emerald-600 font-semibold">
-                        <TrendingUp className="w-3.5 h-3.5" />
-                        {inf.engagementRate}%
-                      </span>
-                      <div className="flex gap-1">
-                        {inf.platforms.map((p) => (
-                          <span key={p} className="text-xs bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex gap-1">
-                        {inf.categories.slice(0, 2).map((cat) => (
-                          <Badge key={cat} variant="secondary" className="text-xs">
-                            {cat}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
                   </div>
-
-                  {/* Rate */}
-                  <div className="text-right shrink-0">
-                    <div className="text-xs text-slate-400 mb-0.5 flex items-center gap-1 justify-end">
-                      <Shield className="w-3 h-3 text-indigo-400" />
-                      플랫폼 전용
-                    </div>
-                    <div className="text-base font-bold text-indigo-600">
-                      {formatCurrency(inf.exclusiveRate)}
-                    </div>
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <span className="text-xs text-slate-400 line-through">{formatCurrency(inf.regularRate)}</span>
-                      <span className="text-xs font-semibold text-emerald-600">{discount}%↓</span>
-                    </div>
-                  </div>
-
-                  {/* CTA */}
-                  <div className="shrink-0 flex gap-2">
-                    <button
-                      onClick={() => setSelectedInf(inf)}
-                      className="px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      상세 보기
-                    </button>
-                    {isRequested ? (
-                      <div className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                        <Check className="w-3.5 h-3.5" />
-                        요청됨
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleRequest(inf.id)}
-                        className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        협업 요청
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

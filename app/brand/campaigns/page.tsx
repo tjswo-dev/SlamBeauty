@@ -82,10 +82,19 @@ const infStatusCount = (
   statuses: string[]
 ) => influencers.filter((i) => statuses.includes(i.status)).length;
 
+const statusFilterMap: Record<string, Campaign["status"] | null> = {
+  "전체": null,
+  "모집 중": "recruiting",
+  "진행 중": "in_progress",
+  "검수 중": "review",
+  "완료": "completed",
+};
+
 export default function CampaignsPage() {
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("전체");
 
   useEffect(() => {
     const load = async () => {
@@ -137,29 +146,46 @@ export default function CampaignsPage() {
 
       {/* Status filter tabs */}
       <div className="flex gap-2 mb-6">
-        {["전체", "모집 중", "진행 중", "검수 중", "완료"].map((tab) => (
-          <button
-            key={tab}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === "전체"
-                ? "bg-indigo-600 text-white"
-                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+        {Object.keys(statusFilterMap).map((tab) => {
+          const count = tab === "전체"
+            ? campaigns.length
+            : campaigns.filter((c) => c.status === statusFilterMap[tab]).length;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveFilter(tab)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeFilter === tab
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {tab}
+              {count > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${activeFilter === tab ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {campaigns.length === 0 ? (
-        <div className="py-20 text-center text-slate-400">
-          <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">아직 등록된 캠페인이 없습니다</p>
-          <p className="text-xs mt-1">첫 번째 캠페인을 등록해보세요</p>
-        </div>
-      ) : (
+      {(() => {
+        const filtered = activeFilter === "전체"
+          ? campaigns
+          : campaigns.filter((c) => c.status === statusFilterMap[activeFilter]);
+        return filtered.length === 0 ? (
+          <div className="py-20 text-center text-slate-400">
+            <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">
+              {campaigns.length === 0 ? "아직 등록된 캠페인이 없습니다" : `'${activeFilter}' 캠페인이 없습니다`}
+            </p>
+            {campaigns.length === 0 && <p className="text-xs mt-1">첫 번째 캠페인을 등록해보세요</p>}
+          </div>
+        ) : (
         <div className="space-y-4">
-          {campaigns.map((campaign) => {
+          {filtered.map((campaign) => {
             const s = statusConfig[campaign.status];
             const influencers = campaign.campaign_influencers ?? [];
             const applications = campaign.campaign_applications ?? [];
@@ -305,7 +331,8 @@ export default function CampaignsPage() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

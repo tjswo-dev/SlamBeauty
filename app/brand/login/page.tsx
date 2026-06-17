@@ -14,6 +14,7 @@ export default function BrandLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [signupSent, setSignupSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,12 +26,17 @@ export default function BrandLoginPage() {
       if (error) setError("이메일 또는 비밀번호가 올바르지 않습니다.");
       else router.push("/brand/dashboard");
     } else {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email, password,
         options: { data: { role: "brand" } },
       });
-      if (error) setError(error.message);
-      else router.push("/brand/dashboard");
+      if (error) {
+        setError(error.message);
+      } else if (data.session) {
+        router.push("/brand/dashboard");
+      } else {
+        setSignupSent(true);
+      }
     }
     setLoading(false);
   };
@@ -51,33 +57,52 @@ export default function BrandLoginPage() {
               <h1 className="text-lg font-bold text-slate-900">브랜드사 {mode === "login" ? "로그인" : "회원가입"}</h1>
             </div>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
-              <Input type="email" placeholder="brand@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+
+          {signupSent ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="w-6 h-6 text-indigo-400" />
+              </div>
+              <p className="text-sm font-semibold text-slate-800 mb-2">이메일을 확인해주세요</p>
+              <p className="text-xs text-slate-500 mb-6">{email}로 확인 링크를 보냈습니다.<br />링크를 클릭하면 자동으로 로그인됩니다.</p>
+              <button
+                onClick={() => { setSignupSent(false); setMode("login"); }}
+                className="text-sm text-indigo-600 font-semibold hover:underline"
+              >
+                로그인으로 돌아가기
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">비밀번호</label>
-              <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            <Button type="submit" disabled={loading} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg mt-2">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "login" ? "로그인" : "회원가입"}
-            </Button>
-          </form>
-          <div className="mt-4 text-center">
-            {mode === "login" ? (
-              <>
-                <span className="text-sm text-slate-500">계정이 없으신가요? </span>
-                <button onClick={() => { setMode("signup"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">회원가입</button>
-              </>
-            ) : (
-              <>
-                <span className="text-sm text-slate-500">이미 계정이 있으신가요? </span>
-                <button onClick={() => { setMode("login"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">로그인</button>
-              </>
-            )}
-          </div>
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
+                  <Input type="email" placeholder="brand@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">비밀번호</label>
+                  <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </div>
+                {error && <p className="text-sm text-red-500">{error}</p>}
+                <Button type="submit" disabled={loading} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg mt-2">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "login" ? "로그인" : "회원가입"}
+                </Button>
+              </form>
+              <div className="mt-4 text-center">
+                {mode === "login" ? (
+                  <>
+                    <span className="text-sm text-slate-500">계정이 없으신가요? </span>
+                    <button onClick={() => { setMode("signup"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">회원가입</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-slate-500">이미 계정이 있으신가요? </span>
+                    <button onClick={() => { setMode("login"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">로그인</button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
