@@ -20,6 +20,14 @@ export default function NewCampaignPage() {
   const [selectedAges, setSelectedAges] = useState<string[]>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [step, setStep] = useState(1);
+  const [selectedBudget, setSelectedBudget] = useState<string | null>(null);
+
+  const budgetOptions = [
+    { label: "20만원", value: "200000", desc: "나노 인플루언서 추천" },
+    { label: "30만원", value: "300000", desc: "마이크로 인플루언서 추천" },
+    { label: "50만원", value: "500000", desc: "미드 인플루언서 추천" },
+    { label: "메가급 500만원 이상", value: "5000000", desc: "메가 / 셀럽 인플루언서" },
+  ];
 
   const addGuideline = () => setGuidelines([...guidelines, ""]);
   const removeGuideline = (i: number) => setGuidelines(guidelines.filter((_, idx) => idx !== i));
@@ -278,15 +286,31 @@ export default function NewCampaignPage() {
                 <CardTitle>예산 & 일정</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">캠페인 예산 (1인당, 원) *</label>
-                    <Input type="number" placeholder="500,000" required />
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">캠페인 예산 (1인당) *</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {budgetOptions.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSelectedBudget(opt.value)}
+                        className={`flex flex-col items-start px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
+                          selectedBudget === opt.value
+                            ? "border-indigo-500 bg-indigo-50"
+                            : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <span className={`text-base font-bold ${selectedBudget === opt.value ? "text-indigo-700" : "text-slate-900"}`}>
+                          {opt.label}
+                        </span>
+                        <span className="text-xs text-slate-400 mt-0.5">{opt.desc}</span>
+                      </button>
+                    ))}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">모집 인원</label>
-                    <Input type="number" placeholder="5" />
-                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">모집 인원</label>
+                  <Input type="number" placeholder="5" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
