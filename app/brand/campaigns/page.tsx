@@ -98,23 +98,28 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/brand/login");
-        return;
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          router.push("/brand/login");
+          return;
+        }
+        const { data } = await supabase
+          .from("campaigns")
+          .select(`
+            *,
+            campaign_influencers(id, status, influencer_id),
+            campaign_applications(id, status, influencer_id)
+          `)
+          .eq("brand_id", session.user.id)
+          .order("created_at", { ascending: false });
+        setCampaigns((data as Campaign[]) ?? []);
+      } catch {
+        // 오류 시 빈 목록 표시
+      } finally {
+        setLoading(false);
       }
-      const { data } = await supabase
-        .from("campaigns")
-        .select(`
-          *,
-          campaign_influencers(id, status, influencer_id),
-          campaign_applications(id, status, influencer_id)
-        `)
-        .eq("brand_id", user.id)
-        .order("created_at", { ascending: false });
-      setCampaigns((data as Campaign[]) ?? []);
-      setLoading(false);
     };
     load();
   }, [router]);

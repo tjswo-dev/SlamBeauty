@@ -199,6 +199,7 @@ export default function CampaignDetailPage() {
     const supabase = createClient();
 
     async function fetchData() {
+      try {
       const { data: campaignData, error: campaignError } = await (supabase.from("campaigns") as ReturnType<typeof supabase.from>)
         .select(
           "id, product_name, category, description, guidelines, status, recruit_count, budget_per_influencer, recruit_start_date, recruit_deadline, shipping_date, content_deadline, target_countries, target_age_min, target_age_max"
@@ -267,6 +268,10 @@ export default function CampaignDetailPage() {
       );
 
       setLoading(false);
+      } catch {
+        setNotFound(true);
+        setLoading(false);
+      }
     }
 
     fetchData();

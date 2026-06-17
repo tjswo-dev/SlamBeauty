@@ -20,25 +20,30 @@ export default function BrandLoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const supabase = createClient();
-    if (mode === "login") {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError("이메일 또는 비밀번호가 올바르지 않습니다.");
-      else router.push("/brand/dashboard");
-    } else {
-      const { data, error } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { role: "brand" } },
-      });
-      if (error) {
-        setError(error.message);
-      } else if (data.session) {
-        router.push("/brand/dashboard");
+    try {
+      const supabase = createClient();
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+        else router.push("/brand/dashboard");
       } else {
-        setSignupSent(true);
+        const { data, error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { role: "brand" } },
+        });
+        if (error) {
+          setError(error.message);
+        } else if (data.session) {
+          router.push("/brand/dashboard");
+        } else {
+          setSignupSent(true);
+        }
       }
+    } catch {
+      setError("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

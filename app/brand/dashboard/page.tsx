@@ -116,25 +116,30 @@ export default function BrandDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace("/brand/login");
-        return;
+    const load = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          router.replace("/brand/login");
+          return;
+        }
+        const { data } = await (supabase.from("campaigns") as ReturnType<typeof supabase.from>)
+          .select(`
+            id, product_name, category, status, recruit_count, budget_per_influencer, recruit_deadline, content_deadline,
+            campaign_influencers(id, status),
+            campaign_applications(id, status)
+          `)
+          .eq("brand_id", session.user.id)
+          .order("created_at", { ascending: false });
+        setCampaigns((data as CampaignRow[]) ?? []);
+      } catch {
+        // 오류 시 빈 상태 표시
+      } finally {
+        setLoading(false);
       }
-      (supabase.from("campaigns") as ReturnType<typeof supabase.from>)
-        .select(`
-          id, product_name, category, status, recruit_count, budget_per_influencer, recruit_deadline, content_deadline,
-          campaign_influencers(id, status),
-          campaign_applications(id, status)
-        `)
-        .eq("brand_id", user.id)
-        .order("created_at", { ascending: false })
-        .then(({ data }: { data: CampaignRow[] | null }) => {
-          setCampaigns(data ?? []);
-          setLoading(false);
-        });
-    });
+    };
+    load();
   }, [router]);
 
   if (loading) {
