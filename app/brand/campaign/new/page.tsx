@@ -10,7 +10,7 @@ import { Upload, Plus, X, ChevronRight, Info } from "lucide-react";
 const categories = ["스킨케어", "메이크업", "선케어", "헤어케어", "바디케어", "향수", "건강/웰니스", "기타"];
 const countries = ["대한민국", "미국", "일본", "중국", "동남아시아", "유럽", "전 세계"];
 const ageRanges = ["13-18", "18-24", "25-34", "35-44", "45+"];
-const platforms = ["Instagram", "YouTube", "TikTok", "Blog", "전체"];
+const platforms = ["Instagram", "TikTok", "Twitter"];
 
 export default function NewCampaignPage() {
   const router = useRouter();
@@ -247,16 +247,6 @@ export default function NewCampaignPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">최소 팔로워 수</label>
-                    <Input type="number" placeholder="10,000" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">최대 팔로워 수</label>
-                    <Input type="number" placeholder="100,000" />
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
