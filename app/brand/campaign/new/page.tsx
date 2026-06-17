@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Upload, Plus, X, ChevronRight, Info } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import type { Platform, Country, Gender } from "@/lib/supabase/types";
 
 const categories = ["스킨케어", "메이크업", "선케어", "헤어케어", "바디케어", "향수", "건강/웰니스", "기타"];
 const countries = ["미국", "캐나다", "일본", "동남아시아", "중동"];
@@ -23,6 +25,10 @@ export default function NewCampaignPage() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [step, setStep] = useState(1);
   const [selectedBudget, setSelectedBudget] = useState<string | null>(null);
+  const [productName, setProductName] = useState("");
+  const [description, setDescription] = useState("");
+  const [recruitCount, setRecruitCount] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
   const [recruitStartDate] = useState(today);
@@ -73,9 +79,51 @@ export default function NewCampaignPage() {
     else setArr([...arr, val]);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/brand/dashboard");
+    setLoading(true);
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push("/brand/login"); return; }
+
+    const { data: brandProfileData } = await supabase
+      .from("brand_profiles")
+      .select("brand_name")
+      .eq("user_id", user.id)
+      .single();
+
+    const brandProfile = brandProfileData as { brand_name: string } | null;
+    const brandName = brandProfile?.brand_name ?? user.email?.split("@")[0] ?? "브랜드";
+
+    const { error } = await (supabase.from("campaigns") as ReturnType<typeof supabase.from>).insert({
+      brand_id: user.id,
+      brand_name: brandName,
+      product_name: productName,
+      description: description,
+      category: selectedCategories[0] ?? "메이크업",
+      guidelines: guidelines.filter((g) => g.trim()),
+      platforms: selectedPlatforms as Platform[],
+      target_countries: selectedCountries as Country[],
+      target_gender: (selectedGender || "무관") as Gender,
+      target_age_min: 18,
+      target_age_max: 40,
+      recruit_count: recruitCount ? parseInt(recruitCount) : 10,
+      budget_per_influencer: parseInt(selectedBudget ?? "300000"),
+      recruit_start_date: recruitStartDate,
+      recruit_deadline: recruitDeadline,
+      selection_deadline: selectionDeadline,
+      shipping_date: shippingDate,
+      content_deadline: contentDeadline,
+    });
+
+    if (error) {
+      console.error(error);
+      setLoading(false);
+      return;
+    }
+
+    router.push("/brand/campaigns");
   };
 
   return (
@@ -118,15 +166,14 @@ export default function NewCampaignPage() {
                 <CardDescription>협업할 제품의 상세 정보를 입력하세요</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">브랜드명 *</label>
-                    <Input placeholder="예: 글로우랩" required />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">제품명 *</label>
-                    <Input placeholder="예: 비타C 앰플 세럼" required />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">제품명 *</label>
+                  <Input
+                    placeholder="예: 비타C 앰플 세럼"
+                    value={productName}
+                    onChange={(e) => setProductName(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div>
@@ -134,6 +181,8 @@ export default function NewCampaignPage() {
                   <textarea
                     className="w-full h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 resize-none"
                     placeholder="제품의 주요 성분, 효능, 특징, 타겟 고객층 등을 상세히 입력해주세요"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     required
                   />
                 </div>
@@ -357,7 +406,12 @@ export default function NewCampaignPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">모집 인원</label>
-                  <Input type="number" placeholder="5" />
+                  <Input
+                    type="number"
+                    placeholder="5"
+                    value={recruitCount}
+                    onChange={(e) => setRecruitCount(e.target.value)}
+                  />
                 </div>
                 {/* 캠페인 일정 흐름 */}
                 <div>
@@ -480,8 +534,8 @@ export default function NewCampaignPage() {
 
             <div className="flex justify-between">
               <Button type="button" variant="outline" onClick={() => setStep(2)}>이전</Button>
-              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-8">
-                캠페인 등록하기
+              <Button type="submit" disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8">
+                {loading ? "등록 중..." : "캠페인 등록하기"}
               </Button>
             </div>
           </div>

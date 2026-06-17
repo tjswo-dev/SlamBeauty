@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, X, Users, Clock, Menu, CheckCircle2, Circle, Send, AlertCircle, Calendar, Truck, Package } from "lucide-react";
-import { dummyOpenCampaigns } from "@/lib/dummy-data";
-import { useInfluencerAuth } from "@/lib/use-influencer-auth";
+import { Search, X, Users, Menu, Send, Calendar, Truck, Package, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import type { User } from "@supabase/supabase-js";
 
 const CATEGORIES = ["전체", "스킨케어", "선케어", "메이크업", "헤어케어", "라이프스타일"];
 const GOOGLE_SVG = (
@@ -18,14 +18,25 @@ const GOOGLE_SVG = (
   </svg>
 );
 
-type Campaign = typeof dummyOpenCampaigns[0] & {
-  recruitStartDate?: string;
-  shippingDate?: string;
-  desiredConditions?: string[];
+type Campaign = {
+  id: string;
+  brand_name: string;
+  product_name: string;
+  product_image_url: string | null;
+  category: string;
+  guidelines: string[];
+  budget_per_influencer: number;
+  recruit_count: number;
+  recruit_start_date: string;
+  recruit_deadline: string;
+  selection_deadline: string;
+  shipping_date: string;
+  content_deadline: string;
+  status: string;
 };
 
 function getDDay(deadline: string) {
-  const now = new Date("2026-06-16");
+  const now = new Date();
   const due = new Date(deadline);
   return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -63,28 +74,25 @@ function ApplyModal({
   onSubmit: (msg: string) => void;
 }) {
   const [message, setMessage] = useState("");
-  const [consent, setConsent] = useState(false);
 
-  const canSubmit = message.trim().length > 0 && (!campaign.secondaryUse || consent);
+  const canSubmit = message.trim().length > 0;
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
       <div className="bg-white w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start gap-3 p-5 border-b border-slate-100">
-          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-slate-100">
-            {campaign.productImage ? (
-              <img src={campaign.productImage} alt={campaign.productName} className="w-full h-full object-cover" />
+          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-indigo-100 flex items-center justify-center">
+            {campaign.product_image_url ? (
+              <img src={campaign.product_image_url} alt={campaign.product_name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: campaign.brandLogoColor }}>
-                {campaign.brandLogo}
-              </div>
+              <span className="text-indigo-600 font-bold text-sm">{campaign.brand_name.slice(0, 1)}</span>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-400">{campaign.brandName}</p>
-            <p className="text-sm font-bold text-slate-900 truncate">{campaign.productName}</p>
-            <p className="text-xs text-purple-600 font-medium mt-0.5">{(campaign.budget / 10000).toFixed(0)}만원</p>
+            <p className="text-xs text-slate-400">{campaign.brand_name}</p>
+            <p className="text-sm font-bold text-slate-900 truncate">{campaign.product_name}</p>
+            <p className="text-xs text-purple-600 font-medium mt-0.5">{(campaign.budget_per_influencer / 10000).toFixed(0)}만원</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-all shrink-0">
             <X className="w-4 h-4 text-slate-400" />
@@ -109,31 +117,6 @@ function ApplyModal({
               <span className="text-xs text-slate-400">{message.length}자</span>
             </div>
           </div>
-
-          {/* Secondary use consent */}
-          {campaign.secondaryUse && (
-            <div
-              className="flex items-start gap-3 p-3.5 rounded-xl border border-amber-100 bg-amber-50 cursor-pointer"
-              onClick={() => setConsent((v) => !v)}
-            >
-              {consent ? (
-                <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              ) : (
-                <Circle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              )}
-              <div>
-                <p className="text-xs font-semibold text-amber-700 mb-0.5">2차 활용 동의 (필수)</p>
-                <p className="text-xs text-amber-600 leading-relaxed">제작한 콘텐츠를 브랜드 광고 소재로 활용하는 데 동의합니다.</p>
-              </div>
-            </div>
-          )}
-
-          {campaign.secondaryUse && !consent && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-600">
-              <AlertCircle className="w-3.5 h-3.5" />
-              2차 활용 동의가 필요한 캠페인입니다
-            </div>
-          )}
         </div>
 
         <div className="px-5 pb-5 flex gap-3">
@@ -157,7 +140,9 @@ function ApplyModal({
 /* ── Main page ───────────────────────────────────────────────────────────── */
 export default function CampaignsPage() {
   const router = useRouter();
-  const { isLoggedIn, isProfileComplete, login, mounted } = useInfluencerAuth();
+  const [user, setUser] = useState<User | null>(null);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("전체");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -165,25 +150,39 @@ export default function CampaignsPage() {
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("campaigns")
+        .select("*")
+        .eq("status", "recruiting")
+        .order("created_at", { ascending: false });
+      setCampaigns((data as Campaign[]) ?? []);
+      setLoadingCampaigns(false);
+    };
+    load();
+  }, []);
+
   const filtered = useMemo(() => {
-    let list = [...(dummyOpenCampaigns as Campaign[])];
+    let list = [...campaigns];
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter((c) => c.productName.toLowerCase().includes(q) || c.brandName.toLowerCase().includes(q));
+      list = list.filter((c) => c.product_name.toLowerCase().includes(q) || c.brand_name.toLowerCase().includes(q));
     }
     if (category !== "전체") list = list.filter((c) => c.category === category);
     return list;
-  }, [search, category]);
+  }, [search, category, campaigns]);
 
   const handleApplyClick = (e: React.MouseEvent, campaign: Campaign) => {
     e.stopPropagation();
-    if (!mounted) return;
-    if (!isLoggedIn) {
+    if (!user) {
       setShowLoginModal(true);
-      return;
-    }
-    if (!isProfileComplete) {
-      router.push("/influencer/profile");
       return;
     }
     setApplyTarget(campaign);
@@ -193,9 +192,25 @@ export default function CampaignsPage() {
     router.push(`/influencer/campaigns/${id}`);
   };
 
-  const handleSubmitApply = (msg: string) => {
-    if (applyTarget) setAppliedIds((prev) => new Set([...prev, applyTarget.id]));
+  const handleSubmitApply = async (msg: string) => {
+    const supabase = createClient();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) return;
+    await (supabase.from("campaign_applications") as ReturnType<typeof supabase.from>).insert({
+      campaign_id: applyTarget!.id,
+      influencer_id: currentUser.id,
+      message: msg,
+    });
+    setAppliedIds((prev) => new Set([...prev, applyTarget!.id]));
     setApplyTarget(null);
+  };
+
+  const handleGoogleLogin = () => {
+    const supabase = createClient();
+    supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback?role=influencer` },
+    });
   };
 
   return (
@@ -208,7 +223,7 @@ export default function CampaignsPage() {
             SlamBeauty
           </Link>
 
-          {/* Center title — desktop (sidebar handles navigation) */}
+          {/* Center title */}
           <span className="hidden md:block text-sm font-semibold text-slate-700 absolute left-1/2 -translate-x-1/2">
             오픈 캠페인
           </span>
@@ -216,10 +231,12 @@ export default function CampaignsPage() {
           {/* Right — desktop auth + mobile hamburger */}
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden md:block">
-              {mounted && isLoggedIn ? (
+              {user ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center text-white text-sm font-bold">김</div>
-                  <span className="text-sm font-medium text-slate-700 hidden lg:block">Kim Soo Yeon</span>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center text-white text-sm font-bold">
+                    {(user.email ?? "U").slice(0, 1).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-slate-700 hidden lg:block">{user.email}</span>
                 </div>
               ) : (
                 <Link href="/influencer/login" className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold transition-all">
@@ -252,7 +269,7 @@ export default function CampaignsPage() {
             <Link href="/influencer/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
               마이페이지
             </Link>
-            {mounted && !isLoggedIn && (
+            {!user && (
               <Link href="/influencer/login" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
                 {GOOGLE_SVG}
                 로그인
@@ -263,20 +280,11 @@ export default function CampaignsPage() {
       </nav>
 
       {/* Guest banner */}
-      {mounted && !isLoggedIn && (
+      {!user && (
         <div className="bg-amber-50 border-b border-amber-200">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
             <p className="text-xs sm:text-sm text-amber-700">로그인 없이 탐색 중입니다. 신청하려면 로그인하세요.</p>
             <Link href="/influencer/login" className="text-xs sm:text-sm font-semibold text-amber-800 underline whitespace-nowrap">로그인하기</Link>
-          </div>
-        </div>
-      )}
-
-      {mounted && isLoggedIn && !isProfileComplete && (
-        <div className="bg-blue-50 border-b border-blue-200">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
-            <p className="text-xs sm:text-sm text-blue-700">마이페이지에서 본인 정보를 먼저 입력해야 신청할 수 있어요.</p>
-            <Link href="/influencer/profile" className="text-xs sm:text-sm font-semibold text-blue-800 underline whitespace-nowrap">정보 입력하기</Link>
           </div>
         </div>
       )}
@@ -303,7 +311,7 @@ export default function CampaignsPage() {
           )}
         </div>
 
-        {/* Category chips — horizontally scrollable on mobile */}
+        {/* Category chips */}
         <div className="flex gap-2 mb-5 sm:mb-6 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap scrollbar-none">
           {CATEGORIES.map((c) => (
             <button
@@ -319,134 +327,139 @@ export default function CampaignsPage() {
           ))}
         </div>
 
-        <div className="text-sm text-slate-500 mb-4">
-          <span className="font-semibold text-slate-800">{filtered.length}개</span>의 캠페인
-        </div>
-
-        {/* Campaign list */}
-        <div className="space-y-4 sm:space-y-5">
-          {filtered.length === 0 ? (
-            <div className="py-16 sm:py-20 text-center text-slate-400">
-              <Search className="w-8 h-8 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">조건에 맞는 캠페인이 없습니다</p>
+        {loadingCampaigns ? (
+          <div className="py-20 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        ) : (
+          <>
+            <div className="text-sm text-slate-500 mb-4">
+              <span className="font-semibold text-slate-800">{filtered.length}개</span>의 캠페인
             </div>
-          ) : (
-            filtered.map((campaign) => {
-              const dday = getDDay(campaign.deadline);
-              const isApplied = appliedIds.has(campaign.id);
-              return (
-                <div
-                  key={campaign.id}
-                  onClick={() => handleCardClick(campaign.id)}
-                  className="bg-white rounded-2xl border border-slate-200 hover:border-purple-200 hover:shadow-lg hover:shadow-purple-50 transition-all cursor-pointer overflow-hidden"
-                >
-                  <div className="p-4 sm:p-5">
-                    <div className="flex gap-4 sm:gap-5 items-start">
 
-                      {/* 맨 왼쪽: 제품 사진 */}
-                      <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl overflow-hidden shrink-0">
-                        {campaign.productImage ? (
-                          <img
-                            src={campaign.productImage}
-                            alt={campaign.productName}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div
-                            className="w-full h-full flex items-center justify-center text-white text-xl font-bold"
-                            style={{ backgroundColor: campaign.brandLogoColor }}
-                          >
-                            {campaign.brandLogo}
-                          </div>
-                        )}
-                      </div>
+            {/* Campaign list */}
+            <div className="space-y-4 sm:space-y-5">
+              {filtered.length === 0 ? (
+                <div className="py-16 sm:py-20 text-center text-slate-400">
+                  <Search className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">조건에 맞는 캠페인이 없습니다</p>
+                </div>
+              ) : (
+                filtered.map((campaign) => {
+                  const dday = getDDay(campaign.recruit_deadline);
+                  const isApplied = appliedIds.has(campaign.id);
+                  return (
+                    <div
+                      key={campaign.id}
+                      onClick={() => handleCardClick(campaign.id)}
+                      className="bg-white rounded-2xl border border-slate-200 hover:border-purple-200 hover:shadow-lg hover:shadow-purple-50 transition-all cursor-pointer overflow-hidden"
+                    >
+                      <div className="p-4 sm:p-5">
+                        <div className="flex gap-4 sm:gap-5 items-start">
 
-                      {/* 오른쪽: 정보 */}
-                      <div className="flex-1 min-w-0">
-
-                        {/* 브랜드명 (가장 크게) + 제품명 */}
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <h2 className="text-lg sm:text-xl font-bold text-slate-900">{campaign.brandName}</h2>
-                          {isApplied && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">지원 완료</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-sm font-semibold text-slate-500">{campaign.productName}</span>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">{campaign.category}</span>
-                          <span className={cn("text-xs font-bold ml-auto", dday <= 3 ? "text-red-600" : dday <= 7 ? "text-amber-600" : "text-emerald-600")}>
-                            {dday <= 0 ? "마감" : `D-${dday}`}
-                          </span>
-                        </div>
-
-                        {/* 핵심 날짜 */}
-                        <div className="grid grid-cols-3 gap-2 mb-3">
-                          <div className="bg-slate-50 rounded-lg px-2.5 py-2">
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
-                              <Calendar className="w-2.5 h-2.5" />모집 기간
-                            </div>
-                            <div className="text-[11px] font-semibold text-slate-800 leading-tight">
-                              {(campaign as Campaign).recruitStartDate ?? "-"} ~<br className="hidden sm:block" /> {campaign.deadline}
-                            </div>
-                          </div>
-                          <div className="bg-slate-50 rounded-lg px-2.5 py-2">
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
-                              <Truck className="w-2.5 h-2.5" />배송 예정일
-                            </div>
-                            <div className="text-[11px] font-semibold text-slate-800">{(campaign as Campaign).shippingDate ?? "-"}</div>
-                          </div>
-                          <div className="bg-slate-50 rounded-lg px-2.5 py-2">
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
-                              <Package className="w-2.5 h-2.5" />콘텐츠 마감
-                            </div>
-                            <div className="text-[11px] font-semibold text-slate-800">{campaign.contentDeadline}</div>
-                          </div>
-                        </div>
-
-                        {/* 콘텐츠 가이드라인 */}
-                        <div className="mb-3.5">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">콘텐츠 가이드라인</p>
-                          <ul className="space-y-1">
-                            {campaign.guidelines.slice(0, 3).map((g, i) => (
-                              <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
-                                <span className="text-purple-400 shrink-0 mt-0.5">•</span>
-                                <span className="line-clamp-1">{g}</span>
-                              </li>
-                            ))}
-                            {campaign.guidelines.length > 3 && (
-                              <li className="text-xs text-slate-400">+{campaign.guidelines.length - 3}개 더</li>
+                          {/* 맨 왼쪽: 제품 사진 */}
+                          <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl overflow-hidden shrink-0">
+                            {campaign.product_image_url ? (
+                              <img
+                                src={campaign.product_image_url}
+                                alt={campaign.product_name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-600 text-xl font-bold">
+                                {campaign.brand_name.slice(0, 1)}
+                              </div>
                             )}
-                          </ul>
-                        </div>
-
-                        {/* 하단 */}
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                          <div className="flex items-center gap-3 text-xs text-slate-500">
-                            <div className="flex items-center gap-1">
-                              <Users className="w-3.5 h-3.5" />
-                              <span className="font-semibold text-slate-700">{campaign.currentApplicants}/{campaign.recruitCount}명</span>
-                            </div>
-                            <span className="font-bold text-slate-800 text-sm">{(campaign.budget / 10000).toFixed(0)}만원</span>
                           </div>
-                          {isApplied ? (
-                            <span className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-600 text-sm font-semibold">지원 완료</span>
-                          ) : (
-                            <button
-                              onClick={(e) => handleApplyClick(e, campaign as Campaign)}
-                              className="px-4 sm:px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-sm font-semibold transition-all"
-                            >
-                              신청하기
-                            </button>
-                          )}
+
+                          {/* 오른쪽: 정보 */}
+                          <div className="flex-1 min-w-0">
+
+                            {/* 브랜드명 + 제품명 */}
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <h2 className="text-lg sm:text-xl font-bold text-slate-900">{campaign.brand_name}</h2>
+                              {isApplied && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">지원 완료</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-sm font-semibold text-slate-500">{campaign.product_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">{campaign.category}</span>
+                              <span className={cn("text-xs font-bold ml-auto", dday <= 3 ? "text-red-600" : dday <= 7 ? "text-amber-600" : "text-emerald-600")}>
+                                {dday <= 0 ? "마감" : `D-${dday}`}
+                              </span>
+                            </div>
+
+                            {/* 핵심 날짜 */}
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="bg-slate-50 rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
+                                  <Calendar className="w-2.5 h-2.5" />모집 기간
+                                </div>
+                                <div className="text-[11px] font-semibold text-slate-800 leading-tight">
+                                  {campaign.recruit_start_date} ~<br className="hidden sm:block" /> {campaign.recruit_deadline}
+                                </div>
+                              </div>
+                              <div className="bg-slate-50 rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
+                                  <Truck className="w-2.5 h-2.5" />배송 예정일
+                                </div>
+                                <div className="text-[11px] font-semibold text-slate-800">{campaign.shipping_date}</div>
+                              </div>
+                              <div className="bg-slate-50 rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-0.5">
+                                  <Package className="w-2.5 h-2.5" />콘텐츠 마감
+                                </div>
+                                <div className="text-[11px] font-semibold text-slate-800">{campaign.content_deadline}</div>
+                              </div>
+                            </div>
+
+                            {/* 콘텐츠 가이드라인 */}
+                            <div className="mb-3.5">
+                              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">콘텐츠 가이드라인</p>
+                              <ul className="space-y-1">
+                                {(campaign.guidelines ?? []).slice(0, 3).map((g, i) => (
+                                  <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-purple-400 shrink-0 mt-0.5">•</span>
+                                    <span className="line-clamp-1">{g}</span>
+                                  </li>
+                                ))}
+                                {(campaign.guidelines ?? []).length > 3 && (
+                                  <li className="text-xs text-slate-400">+{campaign.guidelines.length - 3}개 더</li>
+                                )}
+                              </ul>
+                            </div>
+
+                            {/* 하단 */}
+                            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                <div className="flex items-center gap-1">
+                                  <Users className="w-3.5 h-3.5" />
+                                  <span className="font-semibold text-slate-700">{campaign.recruit_count}명</span>
+                                </div>
+                                <span className="font-bold text-slate-800 text-sm">{(campaign.budget_per_influencer / 10000).toFixed(0)}만원</span>
+                              </div>
+                              {isApplied ? (
+                                <span className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-600 text-sm font-semibold">지원 완료</span>
+                              ) : (
+                                <button
+                                  onClick={(e) => handleApplyClick(e, campaign)}
+                                  className="px-4 sm:px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-sm font-semibold transition-all"
+                                >
+                                  신청하기
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modals */}
@@ -454,7 +467,13 @@ export default function CampaignsPage() {
         <ApplyModal campaign={applyTarget} onClose={() => setApplyTarget(null)} onSubmit={handleSubmitApply} />
       )}
       {showLoginModal && (
-        <LoginModal onClose={() => setShowLoginModal(false)} onLogin={() => { login(); setShowLoginModal(false); }} />
+        <LoginModal
+          onClose={() => setShowLoginModal(false)}
+          onLogin={() => {
+            setShowLoginModal(false);
+            handleGoogleLogin();
+          }}
+        />
       )}
     </div>
   );
