@@ -1,156 +1,90 @@
 "use client";
+
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, ArrowLeft, Loader2 } from "lucide-react";
+import { TrendingUp, Zap, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createClient } from "@/lib/supabase/client";
-
-const GOOGLE_SVG = (
-  <svg width="18" height="18" viewBox="0 0 18 18" className="shrink-0">
-    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
-    <path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
-    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 6.293C4.672 4.166 6.656 3.58 9 3.58z"/>
-  </svg>
-);
 
 export default function BrandLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [signupSent, setSignupSent] = useState(false);
 
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
-    try {
-      const supabase = createClient();
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?role=brand`,
-        },
-      });
-    } catch {
-      setError("Google 로그인 중 오류가 발생했습니다.");
-      setGoogleLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const supabase = createClient();
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) setError("이메일 또는 비밀번호가 올바르지 않습니다.");
-        else router.push("/brand/dashboard");
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { role: "brand" } },
-        });
-        if (error) {
-          setError(error.message);
-        } else if (data.session) {
-          router.push("/brand/dashboard");
-        } else {
-          setSignupSent(true);
-        }
-      }
-    } catch {
-      setError("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setLoading(false);
-    }
+    router.push("/brand/dashboard");
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
+        {/* Back button */}
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 mb-8 transition-colors">
-          <ArrowLeft className="w-4 h-4" />메인으로
+          <ArrowLeft className="w-4 h-4" />
+          메인으로
         </Link>
+
         <div className="bg-white rounded-2xl shadow-xl shadow-indigo-100/50 border border-indigo-100 p-8">
+          {/* Header */}
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="text-xs text-indigo-500 font-medium">For Brand</div>
-              <h1 className="text-lg font-bold text-slate-900">브랜드사 로그인 · 회원가입</h1>
+              <h1 className="text-lg font-bold text-slate-900">브랜드사 로그인</h1>
             </div>
           </div>
 
-          {signupSent ? (
-            <div className="text-center py-4">
-              <p className="text-sm font-semibold text-slate-800 mb-2">이메일을 확인해주세요</p>
-              <p className="text-xs text-slate-500 mb-6">
-                {email}로 확인 링크를 보냈습니다.<br />링크를 클릭하면 자동으로 로그인됩니다.
-              </p>
-              <button
-                onClick={() => { setSignupSent(false); }}
-                className="text-sm text-indigo-600 font-semibold hover:underline"
-              >
-                로그인으로 돌아가기
-              </button>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
+              <Input
+                type="email"
+                placeholder="brand@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
-          ) : (
-            <>
-              {/* Google 로그인 — 메인 */}
-              <button
-                onClick={handleGoogleLogin}
-                disabled={googleLoading}
-                className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-semibold text-slate-700 transition-all shadow-sm disabled:opacity-60 mb-6"
-              >
-                {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : GOOGLE_SVG}
-                Google로 로그인 · 회원가입
-              </button>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">비밀번호</label>
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
 
-              <div className="flex items-center gap-3 mb-6">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400">또는 이메일로</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
+            <Button type="submit" className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg mt-2">
+              로그인
+            </Button>
+          </form>
 
-              {/* 이메일/비밀번호 */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
-                  <Input type="email" placeholder="brand@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">비밀번호</label>
-                  <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button type="submit" disabled={loading} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "login" ? "이메일 로그인" : "이메일 회원가입"}
-                </Button>
-              </form>
+          <div className="mt-4 text-center">
+            <span className="text-sm text-slate-500">계정이 없으신가요? </span>
+            <button
+              onClick={() => router.push("/brand/dashboard")}
+              className="text-sm text-indigo-600 font-semibold hover:underline"
+            >
+              회원가입
+            </button>
+          </div>
 
-              <div className="mt-4 text-center">
-                {mode === "login" ? (
-                  <>
-                    <span className="text-sm text-slate-500">계정이 없으신가요? </span>
-                    <button onClick={() => { setMode("signup"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">회원가입</button>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-sm text-slate-500">이미 계정이 있으신가요? </span>
-                    <button onClick={() => { setMode("login"); setError(""); }} className="text-sm text-indigo-600 font-semibold hover:underline">로그인</button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <p className="text-xs text-slate-400 text-center mb-4">빠른 체험을 원하신다면</p>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push("/brand/dashboard")}
+            >
+              <Zap className="w-4 h-4 text-indigo-500" />
+              데모로 체험하기
+            </Button>
+          </div>
         </div>
       </div>
     </div>

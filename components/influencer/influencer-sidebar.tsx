@@ -56,11 +56,12 @@ const urgentCount = dummyMyActiveCampaigns.filter(
 
 export function InfluencerSidebar() {
   const pathname = usePathname();
-  const { isLoggedIn, user, login, logout } = useInfluencerAuth();
+  const { isLoggedIn, login, logout } = useInfluencerAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const handleLogin = async () => {
-    await login();
+  const handleLogin = () => {
+    login();
+    setShowLoginModal(false);
   };
 
   return (
@@ -79,13 +80,11 @@ export function InfluencerSidebar() {
           {isLoggedIn ? (
             <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-purple-50 border border-purple-100">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
-                {user?.user_metadata?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "?"}
+                김
               </div>
               <div className="min-w-0">
                 <div className="text-xs text-purple-400 font-medium">인플루언서</div>
-                <div className="text-sm font-semibold text-purple-700 truncate">
-                  {user?.user_metadata?.full_name ?? user?.email ?? ""}
-                </div>
+                <div className="text-sm font-semibold text-purple-700 truncate">@sooyeon_beauty</div>
               </div>
             </div>
           ) : (

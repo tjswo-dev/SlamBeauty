@@ -12,9 +12,8 @@ import {
   Bell,
   ChevronRight,
   Building2,
-  LogIn,
 } from "lucide-react";
-import { useBrandAuth } from "@/lib/use-brand-auth";
+import { dummyPendingActions } from "@/lib/dummy-data";
 
 const navGroups = [
   {
@@ -38,16 +37,12 @@ const navGroups = [
   },
 ];
 
+const urgentCount = dummyPendingActions.filter(
+  (a) => a.urgency === "high"
+).length;
+
 export function BrandSidebar() {
   const pathname = usePathname();
-  const { isLoggedIn, user, logout, mounted } = useBrandAuth();
-
-  const displayName = user?.user_metadata?.brand_name
-    ?? user?.user_metadata?.full_name
-    ?? user?.email?.split("@")[0]
-    ?? "브랜드";
-
-  const initial = displayName[0]?.toUpperCase() ?? "B";
 
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-white border-r border-slate-200 flex flex-col z-40">
@@ -61,30 +56,15 @@ export function BrandSidebar() {
 
       {/* Brand identity */}
       <div className="px-3 mt-4">
-        {mounted && isLoggedIn ? (
-          <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-indigo-50 border border-indigo-100">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {initial}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs text-indigo-400 font-medium">브랜드 워크스페이스</div>
-              <div className="text-sm font-semibold text-indigo-700 truncate">{displayName}</div>
-            </div>
+        <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-indigo-50 border border-indigo-100">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+            GL
           </div>
-        ) : (
-          <Link
-            href="/brand/login"
-            className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-indigo-50 hover:border-indigo-100 transition-all"
-          >
-            <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center shrink-0">
-              <Building2 className="w-4 h-4 text-slate-400" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs text-slate-400 font-medium">로그인이 필요합니다</div>
-              <div className="text-sm font-semibold text-indigo-600">로그인 →</div>
-            </div>
-          </Link>
-        )}
+          <div className="min-w-0">
+            <div className="text-xs text-indigo-400 font-medium">브랜드 워크스페이스</div>
+            <div className="text-sm font-semibold text-indigo-700 truncate">글로우랩 코리아</div>
+          </div>
+        </div>
       </div>
 
       {/* Nav groups */}
@@ -96,7 +76,8 @@ export function BrandSidebar() {
             </div>
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const isActive =
+                  pathname === item.href || pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.label}
@@ -115,6 +96,11 @@ export function BrandSidebar() {
                       )}
                     />
                     <span className="flex-1">{item.label}</span>
+                    {item.label === "인플루언서 매칭" && (
+                      <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-full">
+                        30
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -125,32 +111,35 @@ export function BrandSidebar() {
 
       {/* Notifications */}
       <div className="px-3 pb-2">
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
-          <Bell className="w-4 h-4 text-slate-400" />
-          <span className="flex-1 text-left">알림</span>
+        <Link
+          href="/brand/campaigns"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all"
+        >
+          <div className="relative">
+            <Bell className="w-4 h-4 text-slate-400" />
+            {urgentCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+            )}
+          </div>
+          <span className="flex-1">알림</span>
+          {urgentCount > 0 && (
+            <span className="text-xs bg-red-100 text-red-600 font-semibold px-1.5 py-0.5 rounded-full">
+              {urgentCount}
+            </span>
+          )}
           <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-        </button>
+        </Link>
       </div>
 
-      {/* Login / Logout */}
+      {/* Logout */}
       <div className="px-3 pb-4 border-t border-slate-100 pt-3">
-        {mounted && isLoggedIn ? (
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
-          >
-            <LogOut className="w-4 h-4" />
-            로그아웃
-          </button>
-        ) : (
-          <Link
-            href="/brand/login"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
-          >
-            <LogIn className="w-4 h-4" />
-            로그인
-          </Link>
-        )}
+        <Link
+          href="/"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+        >
+          <LogOut className="w-4 h-4" />
+          로그아웃
+        </Link>
       </div>
     </aside>
   );
