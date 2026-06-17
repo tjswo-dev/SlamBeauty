@@ -1,25 +1,43 @@
 "use client";
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 export function useInfluencerAuth() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [isProfileComplete, setIsProfileComplete] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    setIsLoggedIn(localStorage.getItem("inf_logged_in") === "true");
-    setIsProfileComplete(localStorage.getItem("inf_profile_complete") === "true");
+    const supabase = createClient();
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsProfileComplete(localStorage.getItem("inf_profile_complete") === "true");
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = () => {
-    localStorage.setItem("inf_logged_in", "true");
-    setIsLoggedIn(true);
+  const login = async () => {
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?role=influencer`,
+      },
+    });
   };
 
-  const logout = () => {
-    localStorage.removeItem("inf_logged_in");
-    setIsLoggedIn(false);
+  const logout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
   };
 
   const saveProfile = () => {
@@ -27,5 +45,5 @@ export function useInfluencerAuth() {
     setIsProfileComplete(true);
   };
 
-  return { isLoggedIn, isProfileComplete, login, logout, saveProfile, mounted };
+  return { isLoggedIn: !!user, user, isProfileComplete, login, logout, saveProfile, mounted };
 }
